@@ -78,6 +78,9 @@
 !endif #$(NO_SHELL_PROFILES)
 
 [Components]
+  ShellPkg\Application\FwUi\FwUi.inf
+  ShellPkg\Application\PciTree\PciTree.inf
+  ShellPkg\Application\ShellCTestApp\ShellCTestApp.inf
   #
   # Build all the libraries when building this package.
   # This helps developers test changes and how they affect the package.
