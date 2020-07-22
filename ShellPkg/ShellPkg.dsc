@@ -78,6 +78,10 @@
 !endif #$(NO_SHELL_PROFILES)
 
 [Components]
+  ShellPkg\Application\Cmos\Cmos.inf
+  ShellPkg\Application\G3Reset\G3Reset.inf
+  ShellPkg\Application\AbsDiag\AbsDiag.inf
+  ShellPkg\Application\AbsDiagOI\AbsDiagOI.inf
   ShellPkg\Application\FwUi\FwUi.inf
   ShellPkg\Application\PciTree\PciTree.inf
   ShellPkg\Application\ShellCTestApp\ShellCTestApp.inf

@@ -17,9 +17,34 @@
 EFI_PCI_ROOT_BRIDGE_IO_PROTOCOL          *PciRootBridgeIo;
 UINTN DeviceCount=0;
 UINTN BusLevel=0;
+UINT8 MaxBusNumber=0;
+BOOLEAN bPrintAll=FALSE;
+/**
+  Converts a union code character to upper case.
+  This functions converts a unicode character to upper case.
+  If the input Letter is not a lower-cased letter,
+  the original value is returned.
+
+  @param  Letter            The input unicode character.
+
+  @return The upper cased letter.
+
+**/
+CHAR16
+ToUpper (
+  IN CHAR16                    Letter
+  )
+{
+  if ('a' <= Letter && Letter <= 'z') {
+    Letter = (CHAR16) (Letter - 0x20);
+  }
+
+  return Letter;
+}
 
 VOID
 ScanBus(
+//-  IN UINT8 ParentBusNumber,
   IN UINT8 BusNumber
   )
 /*++
@@ -41,7 +66,15 @@ Returns:
   UINT64                                   Address;
   PCI_TYPE01                               HdrType01;
   UINTN i;
-
+  //
+  // Quit enumerating devices if bus has been enumerated already
+  //
+  if (BusNumber < MaxBusNumber) {
+    return;
+  }
+  //
+  // Nested Device/Function loop
+  //
   for (Device = 0; Device <= PCI_MAX_DEVICE; Device++) {
     //
     // For each function, read its configuration space and print summary
@@ -57,39 +90,81 @@ Returns:
                        sizeof(HdrType01)/sizeof(UINT32), 
                        &HdrType01
                        ); 
-             
+
+      //
+      // Next device if it's empty
+      //
       if (HdrType01.Hdr.VendorId == 0xffff) {
         continue;
       }   
-           
-      Print (L"   %03d   ",++DeviceCount);
-      for (i=0; i<BusLevel; i++) {
-        Print (L"-");
-      }
-      for (i=0; i<8-BusLevel; i++) {
-        Print (L" ");
-      }
-      Print (L" %02x     ",BusNumber);
-      Print (L" %02x     ",Device);
-      Print (L" %02x     ",Func); 
-      Print (L" %04x     ",HdrType01.Hdr.VendorId);
-      Print (L" %04x\n"   ,HdrType01.Hdr.DeviceId);
-      
-      if (IS_PCI_BRIDGE(&HdrType01)) {
-        for (Bus = HdrType01.Bridge.SecondaryBus; Bus <= HdrType01.Bridge.SubordinateBus; Bus++) {
-          BusLevel++;
-          ScanBus(Bus);
-          BusLevel--;
+      if (IS_PCI_BRIDGE(&HdrType01) && (HdrType01.Bridge.PrimaryBus == BusNumber)) {
+        //
+        // Recursively enumerating on Bridge device on the same bus number
+        //
+        Print (L"   %03d   ",++DeviceCount);
+        //
+        // print bus level indicator
+        //
+        for (i=0; i<BusLevel; i++) {
+          Print (L"-");
         }
-        
+        //
+        // Print Bus, Device, Function
+        //
+        Print (L"B%02x.",BusNumber);
+        Print (L"D%02x.",Device);
+        Print (L"F%02x ",Func); 
+        Print (L"(SB:%02x~",HdrType01.Bridge.SecondaryBus); 
+        Print (L"%02x)\n",HdrType01.Bridge.SubordinateBus); 
+        BusLevel++;
+        for (Bus = HdrType01.Bridge.SecondaryBus; Bus <= HdrType01.Bridge.SubordinateBus; Bus++) {
+          ScanBus(Bus);
+        }
+        BusLevel--;
+        //
+        // update maximum bus number assigned
+        //
+        MaxBusNumber=HdrType01.Bridge.SubordinateBus;
+      } else {
+        //
+        // Print Bus, Device, Function if not a Bridge Devices
+        //
+        if (bPrintAll) {
+          Print (L"   %03d   ",++DeviceCount);
+          //
+          // print bus level indicator
+          //
+          for (i=0; i<BusLevel; i++) {
+            Print (L"-");
+          }
+          Print (L"B%02x.",BusNumber);
+          Print (L"D%02x.",Device);
+          Print (L"F%02x\n",Func); 
+        }
       }
-                 
+      //
+      // next device if not a multi-function device
+      //           
       if (!IS_PCI_MULTI_FUNC(&HdrType01)) {
         break; 
       }  
     } 
   }
 
+}
+
+/**
+  Show Usage
+  
+  @retval  Other           An error occurred.
+
+**/
+VOID ShowHelp( VOID )
+{
+   Print (L"PciTree [-a]:\n");
+   Print (L"  a: print all devices\n");
+   Print (L"  print bridge devices by default\n");
+   return;
 }
 
 /**
@@ -123,6 +198,24 @@ ShellAppMain (
   )
 {
   EFI_STATUS Status;
+  UINTN  i;
+
+  for (i = 1; i < Argc; i++) {
+    if (Argv[i][0] == '-') {
+      switch(ToUpper(Argv[i][1])) {
+        case 'A':
+          bPrintAll=TRUE;
+          break;
+        default:
+          ShowHelp();
+          return 0;
+      }
+    } else {
+      ShowHelp();
+      return 0;
+      break;
+    }
+  }
 
   Status = gBS->LocateProtocol (&gEfiPciRootBridgeIoProtocolGuid, NULL, &PciRootBridgeIo);
   if (EFI_ERROR (Status)) {
@@ -130,10 +223,11 @@ ShellAppMain (
     return Status;
   }
 
-  Print (L"             PCI Device List:\n\n");
-  Print (L"          Bus     Dev     Func    VID     DID   \n");
-  Print (L"          ---     ---     ----    ---     ---   \n");
-
+  if (bPrintAll) {
+    Print (L"PCI Devices:\n");
+  } else {
+    Print (L"PCI Bridge Devices:\n");
+  }
   ScanBus(0);
 
   return 0;
